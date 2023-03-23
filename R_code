@@ -1,0 +1,105 @@
+## IDA assignment 2_R code
+## s2329207 Ren Tianai
+
+## 2(b)
+## Load the data available in the file dataex2.Rdata
+load("dataex2.Rdata")
+x <- dataex2$X
+r <- dataex2$R
+sig_1 <- 1.5
+
+## Deduce the log likelihood function based on 2(a)
+log_like_norm <- function(x, r, mu_1, sig_1){
+  f_norm_1 <- r * log(dnorm(x, mu_1, sig_1))
+  f_norm_2 <- (1-r) * log(pnorm(x, mu_1, sig_1))
+  sum(f_norm_1+ f_norm_2)
+}
+
+## Use the optim function
+## Find the maximum likelihood estimate of µ(mu_1)
+normopt <- optim(par = c(1), fn = log_like_norm, x = x, r = r, sig_1 = sig_1,
+                 method = "Brent", lower = -10, upper = 10,
+                 control = list("fnscale"=-1), hessian = TRUE)
+normopt
+
+## 4
+load("dataex4.Rdata")
+## Find the location of missing values in Y
+ina <- which(!is.na(dataex4$Y))
+m <- length(ina)
+n <- length(dataex4$Y)
+## Reorder them by the first m values of Y are observed and the remaining n − m are missing 
+y <- c(dataex4$Y[ina], rep(NA, (n-m)))
+x <- c(dataex4$X[ina], dataex4$X[-ina])
+
+## E-step
+e_step_bern <- function(param, x, y, betat){
+  beta0 <- param[1]
+  beta1 <- param[2]
+  
+  f_bern_1 <- sum(y[1:m] * (beta0 + beta1 * x[1:m]))
+  f_bern_2 <- -sum(log(1 + exp(beta0 + beta1 * x)))
+  f_bern_3 <- sum((beta0 + beta1 * x[(m+1):n]) * exp(betat[1] + betat[2] * x[(m+1):n])/(1 + exp(betat[1] + betat[2] * x[(m+1):n])))
+  return(f_bern_1 + f_bern_2 + f_bern_3)
+}
+
+## M-step
+## Find the maximum likelihood estimate of beta by optim function
+betat <- c(0, 0)
+diff <- 1
+eps <- 0.0005
+
+while(diff > eps){
+  beta.old <- betat
+  bern_opt <- optim(c(0, 0), fn = e_step_bern, x = x, y = y, betat = beta.old, 
+                    control = list(fnscale = -1), hessian = TRUE) 
+  diff <- norm(as.matrix(bern_opt$par - beta.old), type = "1")
+  betat <- bern_opt$par
+}
+betat
+
+
+## 5
+## Load the dataex5.Rdata
+load("dataex5.Rdata")
+y <- dataex5
+
+## Implement the EM algorithm based on 5(a)
+mixture <- function(y, theta0, eps){
+  n <- length(y)
+  theta <- theta0
+  p <- theta[1]
+  lambda <- theta[2]; 
+  mu<- theta[3]
+
+  diff <- 1
+  while(diff > eps){
+    theta.old <- theta
+    
+    #E-step
+    ptilde1 <- p*lambda*y^(-lambda-1)
+    ptilde2 <- (1 - p)*mu*y^(-mu-1)
+    ptilde <- ptilde1/(ptilde1 + ptilde2)
+    
+    #M-step
+    p <- mean(ptilde)
+    lambda <- sum(ptilde)/sum(log(y)*ptilde)
+    mu <- sum(1 - ptilde)/sum(log(y)*(1 - ptilde))
+    theta <- c(p, lambda, mu)
+    diff <- sum(abs(theta - theta.old))
+  }
+  return(theta)
+}
+
+## Set the starting values and stopping criterion to find the MLE of theta
+res <- mixture(y = y, c(0.3, 0.3, 0.4), 0.0001)
+p <- res[1]
+lambda <- res[2]
+mu <- res[3]
+p; lambda; mu
+
+hist(y, main = "Q5(b)", xlab = "y", ylab = "Density", breaks = "freedman-diaconis", 
+     freq = F, xlim = c(1, 5))
+curve(p*lambda*x^(-lambda-1) + (1 - p)*mu*x^(-mu-1), 
+      add = TRUE, lwd = 2, col = "blue2")
+
